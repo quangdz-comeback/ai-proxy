@@ -29,6 +29,9 @@ def create_app():
     from endpoints.admin import admin_bp
     app.register_blueprint(admin_bp)
 
+    from endpoints.usage import usage_bp
+    app.register_blueprint(usage_bp)
+
     # Auth middleware
     from auth.middleware import init_auth
     init_auth(app)

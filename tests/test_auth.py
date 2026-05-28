@@ -61,7 +61,7 @@ class TestAdminCRUD:
             headers=self._admin_headers(),
             json={"uses": 50, "admin": 0},
         )
-        assert r.status_code == 200
+        assert r.status_code == 201
         data = r.get_json()
         assert "key" in data
         assert data["key"].startswith("sk-test-")
@@ -117,7 +117,7 @@ class TestAdminCRUD:
             "/v1/admin/api/create",
             headers=self._admin_headers(),
         )
-        assert r.status_code == 200
+        assert r.status_code == 201
         data = r.get_json()
         assert "key" in data
         assert data["key"].startswith("sk-test-")

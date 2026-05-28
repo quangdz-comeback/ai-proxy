@@ -11,8 +11,9 @@ def init_auth(app):
 
     @app.before_request
     def before_request():
-        # Skip auth for health, models list, and OPTIONS preflight
-        if request.path in ("/health", "/v1/health", "/v1/models"):
+        # Skip auth for health, models list, usage, and OPTIONS preflight
+        skip_paths = ("/health", "/v1/health", "/v1/models", "/v1/usage")
+        if request.path in skip_paths or request.path == "/v1/usage":
             g.api_key = None
             g.is_admin = False
             g.start_time = time.time()
@@ -44,8 +45,9 @@ def init_auth(app):
         if key_row is None:
             return jsonify({"error": {"message": "Invalid API key"}}), 401
 
-        # Check quota
-        if key_row["uses"] == 0:
+        # Check quota (NULL = unlimited, >0 = has quota, <=0 = exhausted)
+        uses = key_row.get("uses")
+        if uses is not None and uses <= 0:
             return jsonify({"error": {"message": "Quota exceeded"}}), 429
 
         # Skip quota-decrement for status & admin routes

@@ -38,6 +38,8 @@ def app(tmp_path):
     importlib.reload(_models)
     import endpoints.health as _health
     importlib.reload(_health)
+    import endpoints.usage as _usage
+    importlib.reload(_usage)
     import app as _app
     importlib.reload(_app)
 
