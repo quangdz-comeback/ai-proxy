@@ -3,8 +3,9 @@ import os
 import importlib
 import pytest
 
-# Ensure project root is on sys.path
+# Ensure project root AND tests dir are on sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.dirname(__file__))
 
 # Set env BEFORE importing config/app
 os.environ["ADMIN_API_KEY"] = "sk-test-admin"
@@ -69,3 +70,4 @@ def user_key(app):
     from auth.api_keys import create_key
     key = create_key(uses=100, admin=0)
     return key
+

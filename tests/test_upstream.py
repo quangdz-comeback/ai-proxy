@@ -12,18 +12,7 @@ from upstream.errors import (
     ServerError,
     classify_error,
 )
-
-
-def _mock_response(status_code=200, json_body=None, iter_lines_data=None):
-    """Build a mock requests.Response object."""
-    resp = MagicMock()
-    resp.status_code = status_code
-    if json_body is not None:
-        resp.json.return_value = json_body
-    if iter_lines_data is not None:
-        resp.iter_lines.return_value = iter_lines_data
-    resp.ok = 200 <= status_code < 400
-    return resp
+from helpers import make_mock_response as _mock_response
 
 
 class TestCallUpstreamNonStream:
@@ -211,3 +200,81 @@ class TestUpstreamErrors:
         mock_post.return_value = _mock_response(200, json_body={"id": "ok"})
         result = call_upstream({"model": "mimo-v2.5", "messages": []})
         assert result == {"id": "ok"}
+
+
+class TestGzipHandling:
+    """Test that upstream client handles mismatched gzip encoding."""
+
+    @patch("upstream.client.requests.post")
+    def test_plain_body_with_gzip_header(self, mock_post):
+        """When upstream sends Content-Encoding: gzip but body is plain JSON, it still works."""
+        upstream_resp = {"id": "test", "choices": []}
+        body_bytes = json.dumps(upstream_resp).encode('utf-8')
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.ok = True
+        mock_resp.headers = {"Content-Encoding": "gzip"}
+        mock_resp.raw.read.return_value = body_bytes
+        mock_resp.raw._fp = None
+        mock_resp.iter_content.return_value = [body_bytes]  # NOT gzipped
+        mock_post.return_value = mock_resp
+
+        result = call_upstream({"model": "mimo-v2.5-pro", "messages": []})
+        assert result == upstream_resp
+
+    @patch("upstream.client.requests.post")
+    def test_actual_gzip_body(self, mock_post):
+        """When upstream sends actual gzip-compressed body, it decompresses correctly."""
+        import gzip as gzip_mod
+        upstream_resp = {"id": "test-gz", "choices": []}
+        raw_bytes = json.dumps(upstream_resp).encode('utf-8')
+        gz_bytes = gzip_mod.compress(raw_bytes)
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.ok = True
+        mock_resp.headers = {"Content-Encoding": "gzip"}
+        mock_resp.raw.read.return_value = gz_bytes
+        mock_resp.raw._fp = None
+        mock_resp.iter_content.return_value = [gz_bytes]
+        mock_post.return_value = mock_resp
+
+        result = call_upstream({"model": "mimo-v2.5-pro", "messages": []})
+        assert result == upstream_resp
+
+    @patch("upstream.client.requests.post")
+    def test_no_gzip_header_plain_body(self, mock_post):
+        """Normal response without gzip works as before."""
+        upstream_resp = {"id": "test-normal", "choices": []}
+        body_bytes = json.dumps(upstream_resp).encode('utf-8')
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.ok = True
+        mock_resp.headers = {}
+        mock_resp.raw.read.return_value = body_bytes
+        mock_resp.raw._fp = None
+        mock_resp.iter_content.return_value = [body_bytes]
+        mock_post.return_value = mock_resp
+
+        result = call_upstream({"model": "mimo-v2.5-pro", "messages": []})
+        assert result == upstream_resp
+
+
+class TestGzipMagicBytes:
+    """Test the gzip magic byte check."""
+
+    def test_gzip_magic_bytes_detected(self):
+        """_GZIP_MAGIC constant is correct."""
+        from upstream.client import _GZIP_MAGIC
+        assert _GZIP_MAGIC == b'\x1f\x8b'
+        import gzip as gz
+        compressed = gz.compress(b'hello')
+        assert compressed[:2] == _GZIP_MAGIC
+
+    def test_plain_json_no_magic_bytes(self):
+        """Plain JSON does not start with gzip magic bytes."""
+        from upstream.client import _GZIP_MAGIC
+        plain = b'{"id": "test"}'
+        assert plain[:2] != _GZIP_MAGIC

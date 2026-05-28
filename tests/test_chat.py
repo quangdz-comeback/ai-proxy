@@ -2,6 +2,8 @@
 import json
 from unittest.mock import patch, MagicMock
 
+from helpers import make_mock_response
+
 
 def _make_chat_response(content="Hello!", model="mimo-v2.5-pro", finish_reason="stop"):
     """Build a standard Chat Completions response."""
@@ -68,11 +70,7 @@ class TestChatCompletionsNonStreaming:
     def test_returns_upstream_response(self, mock_post, client, user_key):
         """Non-streaming request returns upstream response directly."""
         upstream_resp = _make_chat_response("Hello from mimo!")
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.ok = True
-        mock_resp.json.return_value = upstream_resp
-        mock_post.return_value = mock_resp
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
 
         r = client.post(
             "/v1/chat/completions",
@@ -92,11 +90,7 @@ class TestChatCompletionsNonStreaming:
     def test_forwards_model_and_messages(self, mock_post, client, user_key):
         """Request payload includes model and messages."""
         upstream_resp = _make_chat_response()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.ok = True
-        mock_resp.json.return_value = upstream_resp
-        mock_post.return_value = mock_resp
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
 
         client.post(
             "/v1/chat/completions",
@@ -122,11 +116,7 @@ class TestChatCompletionsStreaming:
         chunks = _make_stream_chunks("Hi")
         sse_lines = _sse_lines(chunks)
 
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.ok = True
-        mock_resp.iter_lines.return_value = sse_lines
-        mock_post.return_value = mock_resp
+        mock_post.return_value = make_mock_response(200, iter_lines_data=sse_lines)
 
         r = client.post(
             "/v1/chat/completions",
@@ -196,11 +186,7 @@ class TestChatCompletionsToolCalling:
                 },
             }
         ]
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.ok = True
-        mock_resp.json.return_value = upstream_resp
-        mock_post.return_value = mock_resp
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
 
         tools = [
             {

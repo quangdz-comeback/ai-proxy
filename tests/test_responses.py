@@ -2,6 +2,7 @@
 import json
 from unittest.mock import patch, MagicMock
 
+from helpers import make_mock_response
 from format.responses_api import (
     responses_input_to_messages,
     responses_tools_to_cc_tools,
@@ -159,11 +160,7 @@ class TestResponsesEndpointNonStreaming:
             ],
             "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
         }
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.ok = True
-        mock_resp.json.return_value = upstream_resp
-        mock_post.return_value = mock_resp
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
 
         r = client.post(
             "/v1/responses",
@@ -204,11 +201,7 @@ class TestResponsesEndpointNonStreaming:
             ],
             "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
         }
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.ok = True
-        mock_resp.json.return_value = upstream_resp
-        mock_post.return_value = mock_resp
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
 
         client.post(
             "/v1/responses",
@@ -242,11 +235,7 @@ class TestResponsesEndpointNonStreaming:
             ],
             "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
         }
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.ok = True
-        mock_resp.json.return_value = upstream_resp
-        mock_post.return_value = mock_resp
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
 
         client.post(
             "/v1/responses",
@@ -282,11 +271,7 @@ class TestResponsesEndpointNonStreaming:
             ],
             "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
         }
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.ok = True
-        mock_resp.json.return_value = upstream_resp
-        mock_post.return_value = mock_resp
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
 
         client.post(
             "/v1/responses",
@@ -329,11 +314,7 @@ class TestResponsesEndpointNonStreaming:
             ],
             "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
         }
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.ok = True
-        mock_resp.json.return_value = upstream_resp
-        mock_post.return_value = mock_resp
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
 
         r = client.post(
             "/v1/responses",
@@ -386,11 +367,7 @@ class TestResponsesEndpointStreaming:
         ]
         sse_lines = [f"data: {json.dumps(c)}" for c in cc_chunks] + ["data: [DONE]"]
 
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.ok = True
-        mock_resp.iter_lines.return_value = sse_lines
-        mock_post.return_value = mock_resp
+        mock_post.return_value = make_mock_response(200, iter_lines_data=sse_lines)
 
         r = client.post(
             "/v1/responses",

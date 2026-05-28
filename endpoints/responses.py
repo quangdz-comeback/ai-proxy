@@ -6,7 +6,7 @@ import uuid
 from flask import Blueprint, request, jsonify, g
 
 from models.registry import resolve_model
-from upstream.client import call_upstream
+from upstream.client import call_upstream, iter_sse_lines
 from upstream.errors import UpstreamError
 from format.sse import sse_response
 from format.responses_api import (
@@ -108,7 +108,7 @@ def _handle_streaming(cc_payload, model_display):
 
     def generate():
         try:
-            for line in resp.iter_lines(decode_unicode=True):
+            for line in iter_sse_lines(resp):
                 if not line:
                     continue
 
