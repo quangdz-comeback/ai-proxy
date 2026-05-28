@@ -39,6 +39,7 @@ gunicorn>=21.2
 ### `.env.example`
 ```
 UPSTREAM_URL=https://opengateway.gitlawb.com/v1/chat/completions
+# Để trống = guest mode (tự gửi Bearer guest lên upstream)
 UPSTREAM_API_KEY=
 ADMIN_API_KEY=sk-quangdz-admin-ai
 KEY_PREFIX=sk-quangdz
@@ -96,11 +97,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 UPSTREAM_URL = os.getenv("UPSTREAM_URL", "https://opengateway.gitlawb.com/v1/chat/completions")
-UPSTREAM_API_KEY = os.getenv("UPSTREAM_API_KEY", "")
+UPSTREAM_API_KEY = os.getenv("UPSTREAM_API_KEY", "")  # empty → guest mode
+GUEST_API_KEY = "guest"  # fallback when UPSTREAM_API_KEY is empty
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "sk-quangdz-admin-ai")
 KEY_PREFIX = os.getenv("KEY_PREFIX", "sk-quangdz")
 DB_PATH = os.getenv("DB_PATH", "api_keys.db")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+def get_upstream_auth():
+    """Return the Bearer token for upstream. Falls back to 'guest' if no key configured."""
+    return UPSTREAM_API_KEY if UPSTREAM_API_KEY else GUEST_API_KEY
 ```
 
 **`db/schema.sql`**:
@@ -229,15 +235,22 @@ tests/test_upstream.py
 
 **`upstream/client.py`**:
 ```python
+from config import UPSTREAM_URL, get_upstream_auth
+
 def call_upstream(payload: dict, stream: bool = False, timeout: int = 120):
     """
     Send request to upstream.
     If stream=True: returns requests.Response (for SSE iteration)
     If stream=False: returns parsed JSON dict
+
+    Auth: always sends Bearer token.
+    - UPSTREAM_API_KEY nếu có
+    - 'guest' nếu trống (guest mode)
     """
-    headers = {"Content-Type": "application/json"}
-    if UPSTREAM_API_KEY:
-        headers["Authorization"] = f"Bearer {UPSTREAM_API_KEY}"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {get_upstream_auth()}",
+    }
     
     resp = requests.post(
         UPSTREAM_URL,
@@ -297,21 +310,25 @@ tests/test_streaming.mjs
 
 ### Implementation Details
 
-**`models/registry.py`**:
+**`models/registry.py`** (hardcoded — upstream không có /v1/models):
 ```python
-# Passthrough — upstream supports all model names
-# Optional alias mapping for dotted names
-ALIASES = {
-    "newclaude-opus-4.6": "newclaude-opus-4-6",
-    "gpt-5.3-codex": "gpt-5.3-codex",
-    # ...
-}
+MODELS = [
+    "mimo-v2.5-pro",
+    "mimo-v2.5",
+    "mimo-v2-pro",
+    "mimo-v2-flash",
+    "mimo-v2-omni",
+]
+
+MODEL_SET = set(MODELS)
 
 def resolve_model(name: str) -> str:
-    """Resolve model name, return upstream-compatible name."""
+    """Validate model name against hardcoded list."""
     if not name:
         raise ValueError("Model name is required")
-    return ALIASES.get(name, name)
+    if name not in MODEL_SET:
+        raise ValueError(f"Unknown model: {name}. Available: {', '.join(MODELS)}")
+    return name
 ```
 
 **`format/sse.py`**:
@@ -355,7 +372,7 @@ Streaming:
 - Tool calling passthrough (tools in request → tool_calls in response)
 - `stream_options: {include_usage: true}` passthrough
 - Multi-turn conversation works
-- Node.js OpenAI SDK tests pass
+- Node.js OpenAI SDK tests pass (dùng mimo-v2.5 model)
 
 ---
 
@@ -458,9 +475,9 @@ README.md
 ### Implementation Details
 
 **`endpoints/models.py`**:
-- `GET /v1/models` → list available models
-- Hardcode danh sách hoặc dynamic từ upstream
-- Return OpenAI models list format
+- `GET /v1/models` → return hardcoded model list from registry
+- Format: OpenAI models list format (`object: "list"`, `data: [{id, object, created, owned_by}]`)
+- Upstream không có /v1/models nên không thể fetch dynamic
 
 **After_request middleware** (in `auth/middleware.py`):
 - Log every request to `request_log` table

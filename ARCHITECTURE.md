@@ -123,11 +123,13 @@ opengateway_ai_proxy/
 Load từ `.env` file, cung cấp constants cho toàn app:
 
 - `UPSTREAM_URL`: `https://opengateway.gitlawb.com/v1/chat/completions`
-- `UPSTREAM_API_KEY`: API key cho upstream (nếu cần)
+- `UPSTREAM_API_KEY`: API key cho upstream. Nếu trống → **guest mode** (gửi `Bearer guest`)
 - `ADMIN_API_KEY`: Admin key cho proxy
 - `KEY_PREFIX`: Prefix cho generated API keys (default: `sk-quangdz`)
 - `DB_PATH`: Đường dẫn SQLite
 - `RATE_LIMIT`: Cấu hình rate limiting
+
+Upstream không có `/v1/models` endpoint nên danh sách models được hardcode trong `models/registry.py`.
 
 ### 4.2 `auth/` — Authentication
 
@@ -209,8 +211,8 @@ Responses API không phải upstream native format, nên cần conversion:
 
 #### `models.py` — `/v1/models`
 
-- Return danh sách supported models
-- Có thể hardcode hoặc fetch từ upstream `/v1/models` nếu có
+- Return danh sách supported models từ hardcoded registry
+- Upstream không có `/v1/models` endpoint nên không thể fetch dynamic
 
 #### `admin.py` — `/v1/admin/*`
 
@@ -222,14 +224,23 @@ Giữ nguyên CRUD pattern từ base cũ:
 - `GET /v1/admin/logs` — xem request logs
 - `GET /v1/status` — check key info
 
-### 4.5 `models/registry.py` — Model Resolution
+### 4.5 `models/registry.py` — Model Registry (Hardcoded)
 
-Đơn giản hơn base cũ vì chỉ có 1 upstream:
+Upstream không cung cấp `/v1/models` endpoint nên danh sách models được hardcode:
 
-- Maintain danh sách models upstream hỗ trợ
-- Alias resolution: `gpt-5.3-codex` → `gpt-5.3-codex` (passthrough)
-- Có thể map dotted names nếu cần: `newclaude-opus-4.6` → `newclaude-opus-4-6`
-- Validation: reject model name rỗng hoặc không hợp lệ
+```python
+MODELS = [
+    "mimo-v2.5-pro",
+    "mimo-v2.5",
+    "mimo-v2-pro",
+    "mimo-v2-flash",
+    "mimo-v2-omni",
+]
+```
+
+- Validation: reject model name không nằm trong danh sách
+- Return model list cho `/v1/models` endpoint
+- Không cần alias resolution — tất cả model names đều passthrough nguyên bản lên upstream
 
 ### 4.6 `format/` — Format Conversion
 
@@ -318,6 +329,8 @@ Client receives SSE stream (Responses API format)
 
 1. **Single upstream, passthrough**: Không cần multi-provider routing, fallback chains, hay sticky sessions. Đơn giản và reliable.
 
+2. **Guest mode fallback**: Nếu `UPSTREAM_API_KEY` trống, tự gửi `Bearer guest` để upstream vẫn accept request (thay vì fail với lỗi auth).
+
 2. **Native tool calling**: Không inject system prompts hay parse response text. Upstream xử lý tool calling native, proxy chỉ forward.
 
 3. **No context distillation**: Upstream accept full context, không cần shard/summarize.
@@ -329,3 +342,5 @@ Client receives SSE stream (Responses API format)
 6. **Auth & quota giữ nguyên pattern**: SQLite-based API key management giống base cũ, tested và stable.
 
 7. **Test suite**: Kế thừa pattern test từ base cũ — Python unit tests (pytest) + Node.js integration tests (OpenAI SDK).
+
+8. **Hardcoded model list**: Upstream không expose `/v1/models` — danh sách 5 model `mimo-v2.5-pro`, `mimo-v2.5`, `mimo-v2-pro`, `mimo-v2-flash`, `mimo-v2-omni` được hardcode trong registry.
