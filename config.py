@@ -10,6 +10,7 @@ ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "sk-quangdz-admin-ai")
 KEY_PREFIX = os.getenv("KEY_PREFIX", "sk-quangdz")
 DB_PATH = os.getenv("DB_PATH", "api_keys.db")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+PORT = int(os.getenv("PORT", "80"))
 
 
 def get_upstream_auth() -> str:

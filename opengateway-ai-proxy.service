@@ -1,0 +1,28 @@
+[Unit]
+Description=OpenGateway AI Proxy (OpenAI-compatible Flask gateway)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=exedev
+Group=exedev
+WorkingDirectory=/home/exedev/opengateway_ai_proxy
+EnvironmentFile=/home/exedev/opengateway_ai_proxy/.env
+ExecStart=/home/exedev/opengateway_ai_proxy/venv/bin/gunicorn -c /home/exedev/opengateway_ai_proxy/gunicorn.conf.py "app:create_app()"
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Allow binding to port 80 without running as root.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Logging via journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=opengateway-ai-proxy
+
+[Install]
+WantedBy=multi-user.target

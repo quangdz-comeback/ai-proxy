@@ -1,28 +1,52 @@
 import sys
 import os
+import importlib
 import pytest
 
-# Ensure project root is on sys.path so imports work
+# Ensure project root is on sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app import create_app
+# Set env BEFORE importing config/app
+os.environ["ADMIN_API_KEY"] = "sk-test-admin"
+os.environ["UPSTREAM_API_KEY"] = "test-upstream-key"
+os.environ["KEY_PREFIX"] = "sk-test"
 
 
 @pytest.fixture
-def app():
-    """Create test app with a temp DB."""
-    # Use a temp file for DB so tests don't clobber real data
-    import tempfile
-    db_fd, db_path = tempfile.mkstemp(suffix=".db")
+def app(tmp_path):
+    """Create test app with temporary database."""
+    db_path = str(tmp_path / "test.db")
     os.environ["DB_PATH"] = db_path
 
-    app = create_app()
-    app.config["TESTING"] = True
-    yield app
+    # Reload config & db so DB_PATH takes effect
+    import config as _config
+    importlib.reload(_config)
+    import db.database as _dbmod
+    importlib.reload(_dbmod)
+    import auth.api_keys as _ak
+    importlib.reload(_ak)
+    import auth.middleware as _mw
+    importlib.reload(_mw)
+    import endpoints.admin as _admin
+    importlib.reload(_admin)
+    import endpoints.chat as _chat
+    importlib.reload(_chat)
+    import endpoints.responses as _resp
+    importlib.reload(_resp)
+    import endpoints.models as _models
+    importlib.reload(_models)
+    import endpoints.health as _health
+    importlib.reload(_health)
+    import app as _app
+    importlib.reload(_app)
 
-    os.close(db_fd)
-    os.unlink(db_path)
-    # Restore default
+    flask_app = _app.create_app()
+    flask_app.config["TESTING"] = True
+    yield flask_app
+
+    # Cleanup
+    if os.path.exists(db_path):
+        os.unlink(db_path)
     os.environ.pop("DB_PATH", None)
 
 
@@ -32,6 +56,16 @@ def client(app):
 
 
 @pytest.fixture
-def admin_headers():
-    from config import ADMIN_API_KEY
-    return {"Authorization": f"Bearer {ADMIN_API_KEY}"}
+def admin_key(app):
+    """Create an admin key and return it."""
+    from auth.api_keys import create_key
+    key = create_key(uses=-1, admin=1)
+    return key
+
+
+@pytest.fixture
+def user_key(app):
+    """Create a regular user key and return it."""
+    from auth.api_keys import create_key
+    key = create_key(uses=100, admin=0)
+    return key
