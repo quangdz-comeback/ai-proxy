@@ -3,7 +3,7 @@
 ## Tổng quan
 
 Flask gateway export OpenAI-compatible API, forward lên upstream duy nhất
-`https://opengateway.gitlawb.com/v1/chat/completions`. Hỗ trợ Budget Mode —
+(qua `UPSTREAM_URL` env var). Hỗ trợ Budget Mode —
 auto cache + tool call compression triggered by `reasoning_effort="budget"`.
 
 ---

@@ -1,15 +1,15 @@
 [Unit]
-Description=OpenGateway AI Proxy (OpenAI-compatible Flask gateway)
+Description=AI Proxy (OpenAI-compatible Flask gateway)
 After=network.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=exedev
-Group=exedev
-WorkingDirectory=/home/exedev/opengateway_ai_proxy
-EnvironmentFile=/home/exedev/opengateway_ai_proxy/.env
-ExecStart=/home/exedev/opengateway_ai_proxy/venv/bin/gunicorn -c /home/exedev/opengateway_ai_proxy/gunicorn.conf.py "app:create_app()"
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/ai-proxy
+EnvironmentFile=/opt/ai-proxy/.env
+ExecStart=/opt/ai-proxy/venv/bin/gunicorn -c /opt/ai-proxy/gunicorn.conf.py "app:create_app()"
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
@@ -22,7 +22,7 @@ CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 # Logging via journald
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=opengateway-ai-proxy
+SyslogIdentifier=ai-proxy
 
 [Install]
 WantedBy=multi-user.target

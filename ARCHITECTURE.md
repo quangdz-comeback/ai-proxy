@@ -6,7 +6,7 @@ Flask gateway export OpenAI-compatible API (`/v1/chat/completions`, `/v1/respons
 forward lên upstream duy nhất:
 
 ```
-https://opengateway.gitlawb.com/v1/chat/completions
+UPSTREAM_URL (configured in .env)
 ```
 
 Upstream hỗ trợ native tool calling + streaming. Proxy passthrough, không emulate.
@@ -67,7 +67,7 @@ summarize old history, inject terse "caveman" system prompt.
                             │ HTTPS
                             ▼
          ┌──────────────────────────────────────┐
-         │  opengateway.gitlawb.com             │
+         │  UPSTREAM_URL                         │
          │  /v1/chat/completions                │
          │  (Native tool calling + streaming)   │
          └──────────────────────────────────────┘
@@ -158,10 +158,10 @@ Load từ `.env`, constants:
 
 | Variable | Default | Purpose |
 |----------|---------|----------|
-| `UPSTREAM_URL` | `https://opengateway.gitlawb.com/v1/chat/completions` | Upstream endpoint |
+| `UPSTREAM_URL` | `http://localhost:11434/v1/chat/completions` | Upstream endpoint |
 | `UPSTREAM_API_KEY` | `""` | Upstream auth (empty = guest mode) |
-| `ADMIN_API_KEY` | `sk-quangdz-admin-ai` | Admin key for proxy |
-| `KEY_PREFIX` | `sk-quangdz` | Prefix for generated API keys |
+| `ADMIN_API_KEY` | _(empty — must be set)_ | Admin key for proxy |
+| `KEY_PREFIX` | `sk-proxy` | Prefix for generated API keys |
 | `DB_PATH` | `api_keys.db` | SQLite database path |
 | `PORT` | `80` | Server port |
 | `BUDGET_ENABLED` | `true` | Enable/disable budget mode |
@@ -384,7 +384,7 @@ Client POST /v1/chat/completions {model, messages, reasoning_effort: "budget"}
   ▼
 call_upstream(transformed_payload, stream)
   │
-  ├─ POST https://opengateway.gitlawb.com/v1/chat/completions
+  ├─ POST UPSTREAM_URL
   ├─ Gzip-safe response handling
   ├─ SSE passthrough (stream) or JSON parse (non-stream)
   │
@@ -451,12 +451,10 @@ Client receives SSE stream (Responses API format)
 
 ## 7. Key Facts for Context Restoration
 
-- **Project path**: `/home/exedev/opengateway_ai_proxy` (git repo, branch `main`)
-- **Base project reference**: `/home/exedev/ai_proxy/main.py` (3434 lines, monolithic)
-- **Upstream URL**: `https://opengateway.gitlawb.com/v1/chat/completions`
+- **Project path**: Deploy anywhere (clone repo, set up venv)
+- **Upstream URL**: Configured via `UPSTREAM_URL` env var
 - **Real upstream API key**: Stored in `.env` (never hardcode)
-- **Admin API key**: `sk-quangdz-admin-ai` (from config default)
-- **Key prefix**: `sk-quangdz`
+- **Key prefix**: Configured via `KEY_PREFIX` env var (default `sk-proxy`)
 - **DB**: SQLite at `DB_PATH` (default `api_keys.db`)
 - **Deployment**: Container at `/home/container/` — copy files, run `python main.py`
 - **Requirements**: flask, requests, gunicorn, python-dotenv
