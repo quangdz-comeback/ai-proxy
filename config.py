@@ -16,3 +16,10 @@ PORT = int(os.getenv("PORT", "80"))
 def get_upstream_auth() -> str:
     """Return Bearer token for upstream. Falls back to 'guest' if no key configured."""
     return UPSTREAM_API_KEY if UPSTREAM_API_KEY else GUEST_API_KEY
+
+# Budget mode configuration
+BUDGET_ENABLED = os.getenv("BUDGET_ENABLED", "true").lower() == "true"
+BUDGET_CACHE_SIZE = int(os.getenv("BUDGET_CACHE_SIZE", "256"))
+BUDGET_CACHE_TTL = int(os.getenv("BUDGET_CACHE_TTL", "3600"))
+BUDGET_HISTORY_KEEP_N = int(os.getenv("BUDGET_HISTORY_KEEP_N", "4"))
+BUDGET_COMPRESS_THRESHOLD = int(os.getenv("BUDGET_COMPRESS_THRESHOLD", "500"))

@@ -7,6 +7,8 @@ from models.registry import resolve_model
 from upstream.client import call_upstream, iter_sse_lines
 from upstream.errors import UpstreamError
 from format.sse import sse_response
+from budget.pipeline import transform_payload
+from budget.trigger import is_budget_mode
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,11 @@ def chat_completions():
             return jsonify({"error": {"message": str(e), "type": "invalid_request_error"}}), 400
 
         body["model"] = resolved
+
+        # Apply budget compression if triggered
+        if is_budget_mode(body):
+            body = transform_payload(body, g.api_key or "")
+
         stream = body.get("stream", False)
 
         if stream:

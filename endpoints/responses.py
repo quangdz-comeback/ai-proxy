@@ -15,6 +15,8 @@ from format.responses_api import (
     build_response_object,
     ResponseStreamConverter,
 )
+from budget.pipeline import transform_payload
+from budget.trigger import is_budget_mode
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,10 @@ def responses():
             cc_payload["top_p"] = body["top_p"]
         if body.get("max_output_tokens"):
             cc_payload["max_tokens"] = body["max_output_tokens"]
+
+        # Apply budget compression if triggered
+        if is_budget_mode(cc_payload):
+            cc_payload = transform_payload(cc_payload, g.api_key or "")
 
         if stream:
             return _handle_streaming(cc_payload, body.get("model", resolved))
