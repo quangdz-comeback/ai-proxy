@@ -394,3 +394,168 @@ class TestResponsesEndpointStreaming:
         assert any(ev in body for ev in responses_events), (
             f"No Responses API event types found in stream body. Body sample: {body[:500]}"
         )
+
+class TestResponsesEndpointBudgetMode:
+    """Test budget mode integration through /v1/responses endpoint."""
+
+    def _make_cc_response(self, content="Hello!", model="mimo-v2.5-pro"):
+        """Build a standard CC response for testing."""
+        return {
+            "id": "chatcmpl-xyz",
+            "object": "chat.completion",
+            "created": 1700000000,
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+            }],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
+        }
+
+    def _make_cc_chunks(self, content="Hi", model="mimo-v2.5"):
+        """Build CC streaming chunks."""
+        chunks = [{
+            "id": "chatcmpl-xyz",
+            "object": "chat.completion.chunk",
+            "created": 1700000000,
+            "model": model,
+            "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
+        }]
+        for char in content:
+            chunks.append({
+                "id": "chatcmpl-xyz",
+                "object": "chat.completion.chunk",
+                "created": 1700000000,
+                "model": model,
+                "choices": [{"index": 0, "delta": {"content": char}, "finish_reason": None}],
+            })
+        chunks.append({
+            "id": "chatcmpl-xyz",
+            "object": "chat.completion.chunk",
+            "created": 1700000000,
+            "model": model,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        })
+        return chunks
+
+    @patch("upstream.client.requests.post")
+    def test_budget_mode_strips_reasoning_effort(self, mock_post, client, user_key):
+        """Budget mode should strip reasoning_effort from upstream payload."""
+        upstream_resp = self._make_cc_response(" terse response")
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
+
+        r = client.post(
+            "/v1/responses",
+            headers={"Authorization": f"Bearer {user_key}"},
+            json={
+                "model": "mimo-v2.5-pro",
+                "input": "Hello",
+                "reasoning_effort": "budget",
+            },
+        )
+        assert r.status_code == 200
+
+        # Verify upstream payload does NOT have reasoning_effort
+        call_kwargs = mock_post.call_args
+        payload = call_kwargs.kwargs.get("json", call_kwargs[1].get("json", {}))
+        assert "reasoning_effort" not in payload
+
+    @patch("upstream.client.requests.post")
+    def test_budget_mode_injects_caveman(self, mock_post, client, user_key):
+        """Budget mode should inject caveman system prompt into messages."""
+        upstream_resp = self._make_cc_response()
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
+
+        r = client.post(
+            "/v1/responses",
+            headers={"Authorization": f"Bearer {user_key}"},
+            json={
+                "model": "mimo-v2.5-pro",
+                "input": "Hello",
+                "reasoning_effort": "budget",
+            },
+        )
+        assert r.status_code == 200
+
+        # Verify messages have system prompt with caveman
+        call_kwargs = mock_post.call_args
+        payload = call_kwargs.kwargs.get("json", call_kwargs[1].get("json", {}))
+        messages = payload["messages"]
+        assert messages[0]["role"] == "system"
+        assert "caveman" in messages[0]["content"].lower()
+
+    @patch("upstream.client.requests.post")
+    def test_non_budget_keeps_reasoning_effort(self, mock_post, client, user_key):
+        """Non-budget request should keep reasoning_effort in payload."""
+        upstream_resp = self._make_cc_response()
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
+
+        r = client.post(
+            "/v1/responses",
+            headers={"Authorization": f"Bearer {user_key}"},
+            json={
+                "model": "mimo-v2.5-pro",
+                "input": "Hello",
+                "reasoning_effort": "high",
+            },
+        )
+        assert r.status_code == 200
+
+        # "high" should be forwarded as-is
+        call_kwargs = mock_post.call_args
+        payload = call_kwargs.kwargs.get("json", call_kwargs[1].get("json", {}))
+        assert payload.get("reasoning_effort") == "high"
+
+    @patch("upstream.client.requests.post")
+    def test_budget_mode_with_instructions_and_caveman(self, mock_post, client, user_key):
+        """Budget mode should prepend caveman to existing instructions."""
+        upstream_resp = self._make_cc_response()
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
+
+        r = client.post(
+            "/v1/responses",
+            headers={"Authorization": f"Bearer {user_key}"},
+            json={
+                "model": "mimo-v2.5-pro",
+                "input": "Hello",
+                "instructions": "Be helpful.",
+                "reasoning_effort": "budget",
+            },
+        )
+        assert r.status_code == 200
+
+        # First system message should have caveman + original instructions
+        call_kwargs = mock_post.call_args
+        payload = call_kwargs.kwargs.get("json", call_kwargs[1].get("json", {}))
+        messages = payload["messages"]
+        system_msg = messages[0]
+        assert system_msg["role"] == "system"
+        assert "caveman" in system_msg["content"].lower()
+        assert "Be helpful." in system_msg["content"]
+
+    @patch("upstream.client.requests.post")
+    def test_budget_mode_streaming_works(self, mock_post, client, user_key):
+        """Budget mode should work with streaming responses."""
+        cc_chunks = self._make_cc_chunks("OK")
+        sse_lines = [f"data: {json.dumps(c)}" for c in cc_chunks] + ["data: [DONE]"]
+        mock_post.return_value = make_mock_response(200, iter_lines_data=sse_lines)
+
+        r = client.post(
+            "/v1/responses",
+            headers={"Authorization": f"Bearer {user_key}"},
+            json={
+                "model": "mimo-v2.5",
+                "input": "Hi",
+                "stream": True,
+                "reasoning_effort": "budget",
+            },
+        )
+        assert r.status_code == 200
+        assert r.content_type.startswith("text/event-stream")
+
+        # Verify upstream payload was compressed
+        call_kwargs = mock_post.call_args
+        payload = call_kwargs.kwargs.get("json", call_kwargs[1].get("json", {}))
+        assert "reasoning_effort" not in payload
+

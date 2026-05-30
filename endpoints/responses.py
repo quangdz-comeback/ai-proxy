@@ -64,6 +64,8 @@ def responses():
             cc_payload["top_p"] = body["top_p"]
         if body.get("max_output_tokens"):
             cc_payload["max_tokens"] = body["max_output_tokens"]
+        if body.get("reasoning_effort"):
+            cc_payload["reasoning_effort"] = body["reasoning_effort"]
 
         # Apply budget compression if triggered
         if is_budget_mode(cc_payload):

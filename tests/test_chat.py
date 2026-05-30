@@ -218,3 +218,122 @@ class TestChatCompletionsToolCalling:
         data = r.get_json()
         assert "tool_calls" in data["choices"][0]["message"]
         assert data["choices"][0]["message"]["tool_calls"][0]["function"]["name"] == "get_weather"
+
+class TestChatCompletionsBudgetMode:
+    """Test budget mode integration through /v1/chat/completions endpoint."""
+
+    @patch("upstream.client.requests.post")
+    def test_budget_mode_strips_reasoning_effort(self, mock_post, client, user_key):
+        """Budget mode should strip reasoning_effort from upstream payload."""
+        upstream_resp = _make_chat_response(" terse response")
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
+
+        r = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {user_key}"},
+            json={
+                "model": "mimo-v2.5-pro",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "reasoning_effort": "budget",
+            },
+        )
+        assert r.status_code == 200
+
+        # Verify upstream payload does NOT have reasoning_effort
+        call_kwargs = mock_post.call_args
+        payload = call_kwargs.kwargs.get("json", call_kwargs[1].get("json", {}))
+        assert "reasoning_effort" not in payload
+
+    @patch("upstream.client.requests.post")
+    def test_budget_mode_injects_caveman(self, mock_post, client, user_key):
+        """Budget mode should inject caveman system prompt."""
+        upstream_resp = _make_chat_response()
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
+
+        r = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {user_key}"},
+            json={
+                "model": "mimo-v2.5-pro",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "reasoning_effort": "budget",
+            },
+        )
+        assert r.status_code == 200
+
+        # Verify first message is system with caveman prompt
+        call_kwargs = mock_post.call_args
+        payload = call_kwargs.kwargs.get("json", call_kwargs[1].get("json", {}))
+        messages = payload["messages"]
+        assert messages[0]["role"] == "system"
+        assert "caveman" in messages[0]["content"].lower()
+
+    @patch("upstream.client.requests.post")
+    def test_non_budget_passthrough(self, mock_post, client, user_key):
+        """Non-budget request should pass reasoning_effort through."""
+        upstream_resp = _make_chat_response()
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
+
+        r = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {user_key}"},
+            json={
+                "model": "mimo-v2.5-pro",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "reasoning_effort": "high",
+            },
+        )
+        assert r.status_code == 200
+
+        # "high" is a valid value — forwarded to upstream as-is
+        call_kwargs = mock_post.call_args
+        payload = call_kwargs.kwargs.get("json", call_kwargs[1].get("json", {}))
+        assert payload.get("reasoning_effort") == "high"
+
+    @patch("upstream.client.requests.post")
+    def test_budget_mode_compresses_tool_output(self, mock_post, client, user_key):
+        """Budget mode should compress long tool call outputs."""
+        upstream_resp = _make_chat_response()
+        mock_post.return_value = make_mock_response(200, json_body=upstream_resp)
+
+        long_ls_output = "\n".join(
+            f"-rw-r--r--  1 user group {i*100} Jan 01 file_{i}.py"
+            for i in range(50)
+        )
+
+        r = client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {user_key}"},
+            json={
+                "model": "mimo-v2.5-pro",
+                "messages": [
+                    {"role": "user", "content": "list files"},
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [{
+                            "id": "call_001",
+                            "type": "function",
+                            "function": {"name": "bash", "arguments": "{\"command\": \"ls\"}"},
+                        }],
+                    },
+                    {
+                        "role": "tool",
+                        "tool_call_id": "call_001",
+                        "content": long_ls_output,
+                    },
+                    {"role": "user", "content": "summarize"},
+                ],
+                "reasoning_effort": "budget",
+            },
+        )
+        assert r.status_code == 200
+
+        # Verify tool output was compressed
+        call_kwargs = mock_post.call_args
+        payload = call_kwargs.kwargs.get("json", call_kwargs[1].get("json", {}))
+        # Find the tool message in payload
+        tool_msgs = [m for m in payload["messages"] if m.get("role") == "tool"]
+        assert len(tool_msgs) == 1
+        # Compressed should be shorter than original
+        assert len(tool_msgs[0]["content"]) < len(long_ls_output)
